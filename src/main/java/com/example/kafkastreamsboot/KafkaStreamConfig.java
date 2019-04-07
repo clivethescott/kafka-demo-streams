@@ -42,9 +42,9 @@ public class KafkaStreamConfig {
 
     @Bean(name = "wordCountStream")
     public KStream<String, String> wordCountStream(
-            @Qualifier(DEFAULT_STREAMS_BUILDER_BEAN_NAME) StreamsBuilder wordCountStreamBuilder) {
+            @Qualifier(DEFAULT_STREAMS_BUILDER_BEAN_NAME) StreamsBuilder streamsBuilder) {
 
         final Serde<String> stringSerde = Serdes.String();
-        return wordCountStreamBuilder.stream(Topics.WORD_COUNT, Consumed.with(stringSerde, stringSerde));
+        return streamsBuilder.stream(Topics.WORD_COUNT, Consumed.with(stringSerde, stringSerde));
     }
 }
