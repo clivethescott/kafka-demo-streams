@@ -1,73 +1,50 @@
 package com.example.kafkastreamsboot;
 
 import lombok.extern.slf4j.Slf4j;
+import org.apache.kafka.common.serialization.Serde;
 import org.apache.kafka.common.serialization.Serdes;
-import org.apache.kafka.streams.KafkaStreams;
 import org.apache.kafka.streams.StreamsBuilder;
 import org.apache.kafka.streams.StreamsConfig;
-import org.apache.kafka.streams.Topology;
+import org.apache.kafka.streams.kstream.Consumed;
 import org.apache.kafka.streams.kstream.KStream;
-import org.apache.kafka.streams.kstream.KTable;
 import org.springframework.beans.factory.annotation.Qualifier;
 import org.springframework.boot.autoconfigure.kafka.KafkaProperties;
 import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Configuration;
+import org.springframework.kafka.config.StreamsBuilderFactoryBean;
 
-import java.util.Arrays;
-import java.util.Collections;
-import java.util.List;
 import java.util.Properties;
-import java.util.regex.Pattern;
+
+import static org.springframework.kafka.annotation.KafkaStreamsDefaultConfiguration.DEFAULT_STREAMS_BUILDER_BEAN_NAME;
 
 @Configuration
 @Slf4j
 public class KafkaStreamConfig {
 
+    @Bean(name = DEFAULT_STREAMS_BUILDER_BEAN_NAME)
+    public StreamsBuilderFactoryBean streamsBuilderFactoryBean(KafkaProperties kafkaProperties) {
 
-    private static final String WORD_COUNT_TOPOLOGY = "WORD_COUNT_TOPOLOGY";
-    private static final String WORD_COUNT_STREAMS = "WORD_COUNT_STREAMS";
-    private Pattern nonWordPattern = Pattern.compile("\\W+", Pattern.UNICODE_CHARACTER_CLASS);
+        Properties props = new Properties();
 
-    @Bean(name = WORD_COUNT_STREAMS, initMethod = "start", destroyMethod = "close")
-    public KafkaStreams wordCountStreams(@Qualifier(WORD_COUNT_TOPOLOGY) Topology topology,
-                                         KafkaProperties kafkaProperties) {
-
-        final Properties props = new Properties();
-        props.put(StreamsConfig.BOOTSTRAP_SERVERS_CONFIG, kafkaProperties.getBootstrapServers());
         props.put(StreamsConfig.APPLICATION_ID_CONFIG, kafkaProperties.getStreams().getApplicationId());
+        props.put(StreamsConfig.BOOTSTRAP_SERVERS_CONFIG, kafkaProperties.getBootstrapServers());
         props.put(StreamsConfig.DEFAULT_KEY_SERDE_CLASS_CONFIG, Serdes.String().getClass().getName());
         props.put(StreamsConfig.DEFAULT_VALUE_SERDE_CLASS_CONFIG, Serdes.String().getClass().getName());
         props.put(StreamsConfig.STATE_DIR_CONFIG, System.getProperty("java.io.tmpdir"));
 
-        final KafkaStreams wordCountStreams = new KafkaStreams(topology, props);
-        return wordCountStreams;
+        final StreamsBuilderFactoryBean factory = new StreamsBuilderFactoryBean();
+        factory.setAutoStartup(true);
+        factory.setStreamsConfiguration(props);
+
+        return factory;
     }
 
-    @Bean(name = WORD_COUNT_TOPOLOGY)
-    public Topology wordCountTopology() {
 
-        final StreamsBuilder builder = new StreamsBuilder();
-        final KStream<String, String> textLines = builder.stream(Topics.WORD_COUNT);
+    @Bean(name = "wordCountStream")
+    public KStream<String, String> wordCountStream(
+            @Qualifier(DEFAULT_STREAMS_BUILDER_BEAN_NAME) StreamsBuilder wordCountStreamBuilder) {
 
-        KTable<String, Long> wordCounts = textLines
-                .flatMapValues(this::toWords)
-                .groupBy((key, word) -> word)
-                .count();
-
-        wordCounts.toStream()
-                .foreach(this::process);
-
-        return builder.build();
-    }
-
-    private List<String> toWords(String sentence) {
-        if (sentence == null) {
-            return Collections.emptyList();
-        }
-        return Arrays.asList(nonWordPattern.split(sentence.toLowerCase()));
-    }
-
-    private void process(String word, Long count) {
-        log.info("------> Got word ---<" + word + "> with a count of " + count);
+        final Serde<String> stringSerde = Serdes.String();
+        return wordCountStreamBuilder.stream(Topics.WORD_COUNT, Consumed.with(stringSerde, stringSerde));
     }
 }
